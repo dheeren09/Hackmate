@@ -1,6 +1,10 @@
 
 import { useState } from "react";
-import { GraduationCap, User, Mail, Lock, ArrowRight, BookOpen, Globe, Mic } from "lucide-react";
+import {
+  GraduationCap, User, Mail, Lock, ArrowRight,
+  BookOpen, Globe, Mic
+} from "lucide-react";
+import { apiRequest } from "./api";
 import "./AuthPage.css";
 
 function AuthPage({ initialMode = "register", onBack, onSuccess }) {
@@ -9,14 +13,47 @@ function AuthPage({ initialMode = "register", onBack, onSuccess }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [grade, setGrade] = useState("6");
+  const [language, setLanguage] = useState("English");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const isRegister = mode === "register";
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setError("");
+    setLoading(true);
 
-    if (onSuccess) {
-      onSuccess(role);
+    try {
+      if (isRegister) {
+        await apiRequest("/register", {
+          method: "POST",
+          body: JSON.stringify({
+            name: fullName,
+            email,
+            password,
+            role,
+            grade,
+            language,
+          }),
+        });
+      }
+
+      // Registration does not automatically create a Flask session.
+      // Log in after successful registration.
+      const result = await apiRequest("/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (onSuccess) {
+        onSuccess(result.role);
+      }
+    } catch (err) {
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -53,20 +90,9 @@ function AuthPage({ initialMode = "register", onBack, onSuccess }) {
           </p>
 
           <div className="auth-benefits">
-            <div>
-              <BookOpen size={20} />
-              <span>Personalized learning paths</span>
-            </div>
-
-            <div>
-              <Globe size={20} />
-              <span>Learn in your own language</span>
-            </div>
-
-            <div>
-              <Mic size={20} />
-              <span>Voice-first learning support</span>
-            </div>
+            <div><BookOpen size={20} /><span>Personalized learning paths</span></div>
+            <div><Globe size={20} /><span>Learn in your own language</span></div>
+            <div><Mic size={20} /><span>Voice-first learning support</span></div>
           </div>
         </section>
 
@@ -83,7 +109,7 @@ function AuthPage({ initialMode = "register", onBack, onSuccess }) {
           <div className="auth-tabs">
             <button
               className={isRegister ? "active" : ""}
-              onClick={() => setMode("register")}
+              onClick={() => { setMode("register"); setError(""); }}
               type="button"
             >
               Sign Up
@@ -91,7 +117,7 @@ function AuthPage({ initialMode = "register", onBack, onSuccess }) {
 
             <button
               className={!isRegister ? "active" : ""}
-              onClick={() => setMode("login")}
+              onClick={() => { setMode("login"); setError(""); }}
               type="button"
             >
               Log In
@@ -107,8 +133,7 @@ function AuthPage({ initialMode = "register", onBack, onSuccess }) {
                 className={role === "student" ? "selected" : ""}
                 onClick={() => setRole("student")}
               >
-                <GraduationCap size={18} />
-                Student
+                <GraduationCap size={18} /> Student
               </button>
 
               <button
@@ -116,26 +141,56 @@ function AuthPage({ initialMode = "register", onBack, onSuccess }) {
                 className={role === "teacher" ? "selected" : ""}
                 onClick={() => setRole("teacher")}
               >
-                <User size={18} />
-                Teacher
+                <User size={18} /> Teacher
               </button>
             </div>
 
             {isRegister && (
-              <div className="auth-field">
-                <label htmlFor="fullName">Full Name</label>
-                <div className="auth-input-wrap">
-                  <User size={18} />
-                  <input
-                    id="fullName"
-                    type="text"
-                    placeholder="Enter your full name"
-                    value={fullName}
-                    onChange={(event) => setFullName(event.target.value)}
-                    required
-                  />
+              <>
+                <div className="auth-field">
+                  <label htmlFor="fullName">Full Name</label>
+                  <div className="auth-input-wrap">
+                    <User size={18} />
+                    <input
+                      id="fullName"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Enter your full name"
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
+
+                <div className="auth-field">
+                  <label htmlFor="grade">Grade</label>
+                  <div className="auth-input-wrap">
+                    <BookOpen size={18} />
+                    <select
+                      id="grade"
+                      value={grade}
+                      onChange={(e) => setGrade(e.target.value)}
+                    >
+                      <option value="6">Class 6</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="auth-field">
+                  <label htmlFor="language">Learning Language</label>
+                  <div className="auth-input-wrap">
+                    <Globe size={18} />
+                    <select
+                      id="language"
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                    >
+                      <option value="English">English</option>
+                      <option value="Kannada">ಕನ್ನಡ</option>
+                      <option value="Hindi">हिन्दी</option>
+                    </select>
+                  </div>
+                </div>
+              </>
             )}
 
             <div className="auth-field">
@@ -147,7 +202,7 @@ function AuthPage({ initialMode = "register", onBack, onSuccess }) {
                   type="email"
                   placeholder="Enter your email"
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </div>
@@ -162,15 +217,21 @@ function AuthPage({ initialMode = "register", onBack, onSuccess }) {
                   type="password"
                   placeholder="Enter your password"
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   minLength={6}
                   required
                 />
               </div>
             </div>
 
-            <button className="auth-submit" type="submit">
-              {isRegister ? "Create Account" : "Log In"}
+            {error && (
+              <p style={{ color: "#dc2626", margin: "12px 0" }}>{error}</p>
+            )}
+
+            <button className="auth-submit" type="submit" disabled={loading}>
+              {loading
+                ? "Please wait..."
+                : isRegister ? "Create Account" : "Log In"}
               <ArrowRight size={18} />
             </button>
           </form>

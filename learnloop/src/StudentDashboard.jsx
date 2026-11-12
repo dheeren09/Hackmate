@@ -1,4 +1,5 @@
-
+import { useEffect } from "react";
+import { apiRequest } from "./api";
 import { useState } from "react";
 import {
   GraduationCap, LayoutDashboard, BookOpen, ClipboardCheck,
@@ -215,25 +216,174 @@ const languageNames = {
   te: "తెలుగు"
 };
 
-function StudentDashboard() {
+function StudentDashboard({ onLogout }) {
   const { language, setLanguage } = useLanguage();
   const t = translations[language] || translations.en;
 
   const [activeMenu, setActiveMenu] = useState("Dashboard");
+  const [user, setUser] = useState(null);
+  const [subjects, setSubjects] = useState([]);
+  const [topics, setTopics] = useState([]);
+  const [selectedSubject, setSelectedSubject] = useState("");
+  const [selectedTopic, setSelectedTopic] = useState("");
+  const [quiz, setQuiz] = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [result, setResult] = useState(null);
+  const [remediation, setRemediation] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const menuItems = [
-    { name: "Dashboard", label: t.dashboard, icon: LayoutDashboard },
-    { name: "My Learning", label: t.learning, icon: BookOpen },
-    { name: "Quizzes", label: t.quizzes, icon: ClipboardCheck },
-    { name: "Achievements", label: t.achievements, icon: Trophy },
-    { name: "My Profile", label: t.profile, icon: User }
-  ];
+  const languageNames = {
+    en: "English",
+    kn: "Kannada",
+    hi: "Hindi",
+    ta: "Tamil",
+    te: "Telugu",
+  };
 
-  const subjects = [
-    { name: t.mathematics, topic: t.algebra, progress: 85, color: "math", icon: "∑" },
-    { name: t.science, topic: t.physics, progress: 72, color: "science", icon: "⚛" },
-    { name: t.english, topic: t.grammar, progress: 64, color: "english", icon: "A" }
-  ];
+  const apiLanguage = languageNames[language] || "English";
+
+  async function loadDashboard() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const [profile, subjectData] = await Promise.all([
+        apiRequest("/me"),
+        apiRequest("/subjects"),
+      ]);
+
+      setUser(profile);
+      setSubjects(subjectData);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  async function selectSubject(subjectId) {
+    setSelectedSubject(String(subjectId));
+    setSelectedTopic("");
+    setTopics([]);
+    setQuiz(null);
+    setResult(null);
+    setError("");
+
+    try {
+      setLoading(true);
+      const data = await apiRequest(`/subjects/${subjectId}/topics`);
+      setTopics(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function startQuiz() {
+    if (!selectedTopic) {
+      setError("Please select a topic first.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      setQuiz(null);
+      setResult(null);
+      setAnswers({});
+      setRemediation("");
+
+      const data = await apiRequest("/quizzes/start", {
+        method: "POST",
+        body: JSON.stringify({
+          topic_id: Number(selectedTopic),
+          language: apiLanguage,
+        }),
+      });
+
+      setQuiz(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitQuiz() {
+    if (!quiz) return;
+
+    const unanswered = quiz.questions.filter(
+      (question) => !answers[question.id]?.selected_answer
+    );
+
+    if (unanswered.length > 0) {
+      setError(`Please answer all ${quiz.questions.length} questions.`);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const payload = {
+        answers: quiz.questions.map((question) => ({
+          question_id: question.id,
+          selected_answer: answers[question.id].selected_answer,
+          confidence: answers[question.id].confidence || "unsure",
+        })),
+      };
+
+      const data = await apiRequest(
+        `/quizzes/${quiz.attempt_id}/submit`,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }
+      );
+
+      setResult(data);
+      setQuiz(null);
+
+      // Ask the backend for a remedial module after assessment.
+      try {
+        const remedial = await apiRequest(
+          `/topics/${selectedTopic}/remediation`
+        );
+
+        setRemediation(
+          typeof remedial === "string"
+            ? remedial
+            : remedial.remediation || remedial.content ||
+              remedial.message || JSON.stringify(remedial, null, 2)
+        );
+      } catch (remedialError) {
+        setRemediation(
+          "Your quiz has been evaluated. Remedial content could not be loaded: " +
+          remedialError.message
+        );
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function logout() {
+    try {
+      await apiRequest("/logout", { method: "POST" });
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+
+    if (onLogout) onLogout();
+  }
 
   const languageSelector = (
     <select
@@ -241,46 +391,81 @@ function StudentDashboard() {
       onChange={(e) => setLanguage(e.target.value)}
       aria-label="Select learning language"
     >
-      {Object.entries(languageNames).map(([code, name]) => (
+      {Object.entries({
+        en: "English",
+        kn: "ಕನ್ನಡ",
+        hi: "हिन्दी",
+        ta: "தமிழ்",
+        te: "తెలుగు",
+      }).map(([code, name]) => (
         <option value={code} key={code}>{name}</option>
       ))}
     </select>
   );
 
+  const selectedSubjectName =
+    subjects.find((s) => String(s.id) === selectedSubject)?.name || "";
+
+  const selectedTopicName =
+    topics.find((topic) => String(topic.id) === selectedTopic)?.name || "";
+
   return (
     <div className="student-dashboard">
       <aside className="student-sidebar">
         <div className="student-brand">
-          <div className="student-brand-icon"><GraduationCap size={25} /></div>
+          <div className="student-brand-icon">
+            <GraduationCap size={25} />
+          </div>
           <span>LearnLoop</span>
         </div>
 
         <p className="sidebar-label">{t.mainMenu}</p>
+
         <nav className="student-nav">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.name}
-                className={activeMenu === item.name ? "student-nav-item active" : "student-nav-item"}
-                onClick={() => setActiveMenu(item.name)}
-              >
-                <Icon size={19} /><span>{item.label}</span>
-              </button>
-            );
-          })}
+          {[
+            ["Dashboard", t.dashboard, LayoutDashboard],
+            ["My Learning", t.learning, BookOpen],
+            ["Quizzes", t.quizzes, ClipboardCheck],
+            ["Achievements", t.achievements, Trophy],
+            ["My Profile", t.profile, User],
+          ].map(([name, label, Icon]) => (
+            <button
+              key={name}
+              className={
+                activeMenu === name
+                  ? "student-nav-item active"
+                  : "student-nav-item"
+              }
+              onClick={() => setActiveMenu(name)}
+            >
+              <Icon size={19} />
+              <span>{label}</span>
+            </button>
+          ))}
         </nav>
 
         <div className="sidebar-bottom">
-          <button className="student-nav-item" onClick={() => setActiveMenu("Settings")}>
-            <Settings size={19} /><span>{t.settings}</span>
+          <button
+            className="student-nav-item"
+            onClick={() => setActiveMenu("Settings")}
+          >
+            <Settings size={19} />
+            <span>{t.settings}</span>
           </button>
-          <button className="student-nav-item" onClick={() => setActiveMenu("Logout")}>
-            <LogOut size={19} /><span>{t.logout}</span>
+
+          <button className="student-nav-item" onClick={logout}>
+            <LogOut size={19} />
+            <span>{t.logout}</span>
           </button>
+
           <div className="sidebar-user">
-            <div className="avatar">S</div>
-            <div><strong>Student</strong><span>{t.account}</span></div>
+            <div className="avatar">
+              {(user?.name || "S").charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <strong>{user?.name || "Student"}</strong>
+              <span>{t.account}</span>
+            </div>
           </div>
         </div>
       </aside>
@@ -291,66 +476,84 @@ function StudentDashboard() {
             <span className="portal-label">{t.portal}</span>
             <h2>{t.space}</h2>
           </div>
+
           <div className="topbar-actions">
             {languageSelector}
-            <button className="notification-button" aria-label="Notifications">
-              <Bell size={20} /><span></span>
-            </button>
-            <div className="topbar-avatar">S</div>
+            <div className="topbar-avatar">
+              {(user?.name || "S").charAt(0).toUpperCase()}
+            </div>
           </div>
         </header>
 
-        <section className="student-welcome">
-          <div>
-            <span className="welcome-date">{t.journey}</span>
-            <h1>{t.hello}</h1>
-            <p>{t.encouragement}</p>
+        {error && (
+          <div
+            role="alert"
+            style={{
+              background: "#fee2e2",
+              color: "#991b1b",
+              padding: "12px 16px",
+              borderRadius: 8,
+              marginBottom: 16,
+            }}
+          >
+            {error}
+            <button
+              onClick={() => setError("")}
+              style={{ float: "right", cursor: "pointer" }}
+            >
+              ×
+            </button>
           </div>
-          <div className="welcome-decoration"><GraduationCap size={65} /></div>
-        </section>
+        )}
 
-        <section className="student-stats">
-          <div className="stat-card">
-            <div className="stat-icon progress-stat"><Target size={23} /></div>
-            <div><span>{t.progress}</span><h3>78%</h3><small>{t.keepGoing}</small></div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon lessons-stat"><BookOpen size={23} /></div>
-            <div><span>{t.completed}</span><h3>24</h3><small>{t.outOf}</small></div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon streak-stat"><Flame size={23} /></div>
-            <div><span>{t.streak}</span><h3>{t.days}</h3><small>{t.fire}</small></div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-icon time-stat"><Clock size={23} /></div>
-            <div><span>{t.time}</span><h3>{t.hours}</h3><small>{t.week}</small></div>
-          </div>
-        </section>
+        {loading && (
+          <p style={{ padding: 12 }}>Loading... Please wait.</p>
+        )}
 
         {activeMenu === "Dashboard" && (
           <>
+            <section className="student-welcome">
+              <div>
+                <span className="welcome-date">{t.journey}</span>
+                <h1>Hello, {user?.name || "Student"}! 👋</h1>
+                <p>{t.encouragement}</p>
+              </div>
+              <div className="welcome-decoration">
+                <GraduationCap size={65} />
+              </div>
+            </section>
+
             <section className="student-content-grid">
               <div className="student-panel subjects-panel">
                 <div className="panel-heading">
-                  <div><span className="panel-eyebrow">{t.subjects}</span><h2>{t.continue}</h2></div>
-                  <button className="text-action" onClick={() => setActiveMenu("My Learning")}>
-                    {t.viewAll} <ArrowRight size={16} />
-                  </button>
+                  <div>
+                    <span className="panel-eyebrow">{t.subjects}</span>
+                    <h2>{t.continue}</h2>
+                  </div>
                 </div>
+
+                {subjects.length === 0 && !loading && (
+                  <p>No subjects are available yet.</p>
+                )}
+
                 <div className="subject-list">
                   {subjects.map((subject) => (
-                    <div className="student-subject" key={subject.name}>
-                      <div className={`student-subject-icon ${subject.color}`}>{subject.icon}</div>
+                    <div className="student-subject" key={subject.id}>
+                      <div className="student-subject-icon math">
+                        <BookOpen size={22} />
+                      </div>
                       <div className="student-subject-details">
                         <strong>{subject.name}</strong>
-                        <span>{subject.topic}</span>
-                        <div className="student-progress-track">
-                          <div className={`student-progress-fill ${subject.color}`} style={{ width: `${subject.progress}%` }} />
-                        </div>
+                        <span>Choose this subject to see its topics.</span>
                       </div>
-                      <strong className="subject-percentage">{subject.progress}%</strong>
-                      <button className="subject-play" onClick={() => setActiveMenu("My Learning")} aria-label={`${t.continue} ${subject.name}`}>
+                      <button
+                        className="subject-play"
+                        onClick={() => {
+                          selectSubject(subject.id);
+                          setActiveMenu("Quizzes");
+                        }}
+                        aria-label={`Select ${subject.name}`}
+                      >
                         <Play size={15} />
                       </button>
                     </div>
@@ -358,112 +561,270 @@ function StudentDashboard() {
                 </div>
               </div>
 
-              <div className="student-panel mastery-panel">
-                <span className="panel-eyebrow">{t.performance}</span>
-                <h2>{t.mastery}</h2>
-                <div className="mastery-circle">
-                  <div className="mastery-inner"><strong>78%</strong><span>{t.mastered}</span></div>
-                </div>
-                <p>{t.progressText}</p>
-                <div className="mastery-legend">
-                  <span><i></i> {t.masteredConcepts}</span>
-                  <span><i></i> {t.improve}</span>
-                </div>
-              </div>
-            </section>
-
-            <section className="student-bottom-grid">
-              <div className="student-panel quiz-panel">
-                <div className="panel-heading">
-                  <div><span className="panel-eyebrow">{t.test}</span><h2>{t.recommended}</h2></div>
-                  <div className="quiz-icon"><Brain size={24} /></div>
-                </div>
-                <h3>{t.basicAlgebra}</h3>
-                <p>{t.practice}</p>
-                <div className="quiz-details">
-                  <span><ClipboardCheck size={16} /> {t.questions}</span>
-                  <span><Clock size={16} /> {t.minutes}</span>
-                </div>
-                <button className="start-quiz-button" onClick={() => setActiveMenu("Quizzes")}>
-                  {t.start} <ArrowRight size={17} />
-                </button>
-              </div>
-
               <div className="student-panel language-panel">
                 <div className="language-icon"><Globe size={25} /></div>
                 <span className="panel-eyebrow">{t.learnYourWay}</span>
                 <h2>{t.languageLearning}</h2>
-                <p>{t.selected} <strong>{languageNames[language]}</strong>. {t.change}</p>
+                <p>
+                  {t.selected} <strong>{apiLanguage}</strong>. {t.change}
+                </p>
                 <div className="voice-learning">
-                  <Mic size={19} /><span>{t.voice}</span><CheckCircle2 size={17} />
+                  <Mic size={19} />
+                  <span>{t.voice}</span>
+                  <CheckCircle2 size={17} />
                 </div>
               </div>
             </section>
-          </>
-        )}
 
-        {activeMenu === "My Learning" && (
-          <section className="student-panel alternate-panel">
-            <span className="panel-eyebrow">{t.mySubjects}</span>
-            <h2>{t.learning}</h2><p>{t.choose}</p>
-            {subjects.map((subject) => (
-              <div className="alternate-row" key={subject.name}>
-                <strong>{subject.name}</strong><span>{subject.progress}% {t.completedPercent}</span>
-              </div>
-            ))}
-          </section>
+            <section className="student-panel quiz-panel">
+              <span className="panel-eyebrow">{t.test}</span>
+              <h2>Start an AI-powered assessment</h2>
+              <p>Select a subject and topic to generate your quiz.</p>
+              <button
+                className="start-quiz-button"
+                onClick={() => setActiveMenu("Quizzes")}
+              >
+                Go to Quizzes <ArrowRight size={17} />
+              </button>
+            </section>
+          </>
         )}
 
         {activeMenu === "Quizzes" && (
           <section className="student-panel alternate-panel">
             <span className="panel-eyebrow">{t.practiceImprove}</span>
-            <h2>{t.myQuizzes}</h2><p>{t.activities}</p>
-            <div className="alternate-row"><strong>{t.basicAlgebra}</strong><span>{t.questions} · {t.minutes}</span></div>
-            <div className="alternate-row"><strong>{t.scienceQuiz}</strong><span>{t.questions} · {t.minutes}</span></div>
+            <h2>{t.myQuizzes}</h2>
+            <p>Select a subject, choose a topic, and start your AI-generated quiz.</p>
+
+            <div style={{ display: "grid", gap: 14, maxWidth: 520 }}>
+              <label>
+                **Subject**
+                <select
+                  value={selectedSubject}
+                  onChange={(e) => selectSubject(e.target.value)}
+                  style={{ display: "block", width: "100%", padding: 12, marginTop: 6 }}
+                >
+                  <option value="">Select a subject</option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                **Topic**
+                <select
+                  value={selectedTopic}
+                  onChange={(e) => setSelectedTopic(e.target.value)}
+                  disabled={!topics.length}
+                  style={{ display: "block", width: "100%", padding: 12, marginTop: 6 }}
+                >
+                  <option value="">Select a topic</option>
+                  {topics.map((topic) => (
+                    <option key={topic.id} value={topic.id}>
+                      {topic.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                className="start-quiz-button"
+                onClick={startQuiz}
+                disabled={loading || !selectedTopic}
+              >
+                Generate AI Quiz <ArrowRight size={17} />
+              </button>
+            </div>
+
+            {quiz && (
+              <div style={{ marginTop: 28 }}>
+                <h2>{quiz.topic || selectedTopicName}</h2>
+                <p>Answer every question before submitting.</p>
+
+                {quiz.questions.map((question, index) => (
+                  <div
+                    key={question.id}
+                    style={{
+                      border: "1px solid #ddd",
+                      borderRadius: 10,
+                      padding: 18,
+                      marginBottom: 18,
+                    }}
+                  >
+                    <h3>{index + 1}. {question.question}</h3>
+
+                    {["A", "B", "C", "D"].map((letter) => (
+                      <label
+                        key={letter}
+                        style={{
+                          display: "block",
+                          padding: 8,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name={`question-${question.id}`}
+                          checked={
+                            answers[question.id]?.selected_answer === letter
+                          }
+                          onChange={() =>
+                            setAnswers((previous) => ({
+                              ...previous,
+                              [question.id]: {
+                                ...previous[question.id],
+                                selected_answer: letter,
+                              },
+                            }))
+                          }
+                        />
+                        {" "}
+                        {letter}. {question[`option_${letter.toLowerCase()}`]}
+                      </label>
+                    ))}
+
+                    <label style={{ display: "block", marginTop: 12 }}>
+                      How confident are you?
+                      <select
+                        value={answers[question.id]?.confidence || "unsure"}
+                        onChange={(e) =>
+                          setAnswers((previous) => ({
+                            ...previous,
+                            [question.id]: {
+                              ...previous[question.id],
+                              confidence: e.target.value,
+                            },
+                          }))
+                        }
+                        style={{ display: "block", padding: 8, marginTop: 6 }}
+                      >
+                        <option value="confident">Confident</option>
+                        <option value="unsure">Unsure</option>
+                        <option value="guessed">I guessed</option>
+                      </select>
+                    </label>
+                  </div>
+                ))}
+
+                <button
+                  className="start-quiz-button"
+                  onClick={submitQuiz}
+                  disabled={loading}
+                >
+                  Submit Quiz
+                </button>
+              </div>
+            )}
+
+            {result && (
+              <div style={{ marginTop: 28 }}>
+                <h2>Quiz Results</h2>
+                <h1>{result.score} / {result.total}</h1>
+                <h3>{result.percentage}%</h3>
+                <p>
+                  {result.message || "Your assessment has been evaluated."}
+                </p>
+
+                {result.results?.map((item, index) => (
+                  <div
+                    key={item.question_id}
+                    style={{
+                      padding: 12,
+                      borderBottom: "1px solid #ddd",
+                    }}
+                  >
+                    <strong>
+                      Question {index + 1}: {item.correct ? "Correct" : "Incorrect"}
+                    </strong>
+                    <p>{item.explanation}</p>
+                  </div>
+                ))}
+
+                <h2 style={{ marginTop: 24 }}>Personalised Remedial Learning</h2>
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    fontFamily: "inherit",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {remediation || "Preparing your remedial learning module..."}
+                </pre>
+
+                <button
+                  className="start-quiz-button"
+                  onClick={() => {
+                    setResult(null);
+                    setQuiz(null);
+                    setRemediation("");
+                    setAnswers({});
+                  }}
+                >
+                  Try Another Quiz
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeMenu === "My Learning" && (
+          <section className="student-panel alternate-panel">
+            <h2>{t.learning}</h2>
+            <p>Choose a subject to explore its available topics and quizzes.</p>
+            {subjects.map((subject) => (
+              <div className="alternate-row" key={subject.id}>
+                <strong>{subject.name}</strong>
+                <button onClick={() => {
+                  selectSubject(subject.id);
+                  setActiveMenu("Quizzes");
+                }}>
+                  Explore topics
+                </button>
+              </div>
+            ))}
           </section>
         )}
 
         {activeMenu === "Achievements" && (
           <section className="student-panel alternate-panel">
-            <span className="panel-eyebrow">{t.celebrate}</span>
             <h2>{t.myAchievements}</h2>
-            <div className="achievement-item"><Trophy size={28} /><div><strong>{t.champion}</strong><p>{t.firstLessons}</p></div></div>
-            <div className="achievement-item"><Flame size={28} /><div><strong>{t.fiveStreak}</strong><p>{t.fiveDays}</p></div></div>
+            <p>Complete quizzes and improve your topic mastery to build achievements.</p>
           </section>
         )}
 
         {activeMenu === "My Profile" && (
           <section className="student-panel alternate-panel">
-            <span className="panel-eyebrow">{t.accountTitle}</span>
             <h2>{t.profile}</h2>
-            <div className="profile-placeholder">
-              <div className="profile-avatar">S</div>
-              <strong>Student</strong><span>{t.studentAccount}</span><p>{t.backend}</p>
-            </div>
+            {user && (
+              <>
+                <p><strong>Name:</strong> {user.name}</p>
+                <p><strong>Email:</strong> {user.email}</p>
+                <p><strong>Role:</strong> {user.role}</p>
+                <p><strong>Grade:</strong> {user.grade}</p>
+                <p><strong>Language:</strong> {user.language}</p>
+              </>
+            )}
           </section>
         )}
 
         {activeMenu === "Settings" && (
           <section className="student-panel alternate-panel">
-            <span className="panel-eyebrow">{t.preferences}</span>
-            <h2>{t.settings}</h2><p>{t.chooseLanguage}</p>
+            <h2>{t.settings}</h2>
+            <p>{t.chooseLanguage}</p>
             {languageSelector}
           </section>
         )}
 
-        {activeMenu === "Logout" && (
-          <section className="student-panel alternate-panel">
-            <h2>{t.logoutTitle}</h2><p>{t.logoutText}</p>
-            <button className="start-quiz-button" onClick={() => setActiveMenu("Dashboard")}>
-              {t.return}
-            </button>
-          </section>
-        )}
-
-        <footer className="student-footer">© 2026 LearnLoop · {t.footer}</footer>
+        <footer className="student-footer">
+          © 2026 LearnLoop · {t.footer}
+        </footer>
       </main>
     </div>
   );
 }
 
 export default StudentDashboard;
+

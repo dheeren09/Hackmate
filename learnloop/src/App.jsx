@@ -33,6 +33,11 @@ function AppContent() {
     }
   }
 
+  function handleLogout() {
+    setAuthMode("login");
+    setCurrentPage("auth");
+  }
+
   return (
     <>
       {currentPage === "home" && (
@@ -51,9 +56,13 @@ function AppContent() {
         />
       )}
 
-      {currentPage === "student" && <StudentDashboard />}
+      {currentPage === "student" && (
+        <StudentDashboard onLogout={handleLogout} />
+      )}
 
-      {currentPage === "teacher" && <TeacherDashboard />}
+      {currentPage === "teacher" && (
+        <TeacherDashboard />
+      )}
     </>
   );
 }
