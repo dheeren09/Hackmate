@@ -4,6 +4,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 from functools import wraps
 
+from assessment_routes import create_assessment_blueprint
+
 app = Flask(__name__)
 app.secret_key = "hackmate-demo-secret-key"
 
@@ -52,6 +54,14 @@ def login_required(role=None):
         return wrapper
     return decorator
 
+
+# ASSESSMENT BLUEPRINT REGISTRATION
+assessment_bp, init_assessment_db, seed_curriculum = create_assessment_blueprint(
+    get_db,
+    login_required
+)
+
+app.register_blueprint(assessment_bp)
 
 # REGISTER
 @app.route("/api/register", methods=["POST"])
@@ -191,4 +201,6 @@ def logout():
 
 if __name__ == "__main__":
     init_db()
+    init_assessment_db()
+    seed_curriculum()
     app.run(debug=True)
