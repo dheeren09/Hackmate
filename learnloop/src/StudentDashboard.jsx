@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import {
   GraduationCap, LayoutDashboard, BookOpen, ClipboardCheck,
@@ -8,6 +7,7 @@ import {
 
 import "./StudentDashboard.css";
 import { useLanguage } from "./LanguageContext";
+import QuizCenter from "./QuizCenter";
 
 const translations = {
   en: {
@@ -414,14 +414,7 @@ function StudentDashboard() {
           </section>
         )}
 
-        {activeMenu === "Quizzes" && (
-          <section className="student-panel alternate-panel">
-            <span className="panel-eyebrow">{t.practiceImprove}</span>
-            <h2>{t.myQuizzes}</h2><p>{t.activities}</p>
-            <div className="alternate-row"><strong>{t.basicAlgebra}</strong><span>{t.questions} · {t.minutes}</span></div>
-            <div className="alternate-row"><strong>{t.scienceQuiz}</strong><span>{t.questions} · {t.minutes}</span></div>
-          </section>
-        )}
+        {activeMenu === "Quizzes" && <QuizCenter />}
 
         {activeMenu === "Achievements" && (
           <section className="student-panel alternate-panel">
