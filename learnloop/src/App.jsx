@@ -4,8 +4,10 @@ import { useState } from "react";
 import LandingPage from "./LandingPage";
 import AuthPage from "./AuthPage";
 import StudentDashboard from "./StudentDashboard";
+import TeacherDashboard from "./TeacherDashboard";
+import { LanguageProvider } from "./LanguageContext";
 
-function App() {
+function AppContent() {
   const [currentPage, setCurrentPage] = useState("home");
   const [authMode, setAuthMode] = useState("register");
 
@@ -26,8 +28,8 @@ function App() {
   function handleAuthSuccess(role) {
     if (role === "student") {
       setCurrentPage("student");
-    } else {
-      alert("Teacher dashboard will be added next.");
+    } else if (role === "teacher") {
+      setCurrentPage("teacher");
     }
   }
 
@@ -49,10 +51,18 @@ function App() {
         />
       )}
 
-      {currentPage === "student" && (
-        <StudentDashboard />
-      )}
+      {currentPage === "student" && <StudentDashboard />}
+
+      {currentPage === "teacher" && <TeacherDashboard />}
     </>
+  );
+}
+
+function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }
 

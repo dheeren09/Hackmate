@@ -835,3 +835,16 @@
       gap: 8px;
     }
   }  
+
+/* Support Indian language scripts */
+.student-dashboard {
+    font-family: "Noto Sans Kannada", "Noto Sans Devanagari",
+      "Noto Sans Tamil", "Noto Sans Telugu", Arial, sans-serif;
+  }
+  
+  .student-dashboard select,
+  .student-dashboard button,
+  .student-dashboard input {
+    font-family: inherit;
+  }
+  
