@@ -1,4 +1,4 @@
-
+from classroom_routes import classroom_bp, init_classroom_db
 from flask import Flask, request, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
@@ -8,7 +8,9 @@ app = Flask(__name__)
 app.secret_key = "hackmate-demo-secret-key"
 
 DATABASE = "hackmate.db"
+app.config["DATABASE"] = DATABASE
 
+app.register_blueprint(classroom_bp)
 
 # DATABASE INITIALISATION
 def init_db():
@@ -191,4 +193,5 @@ def logout():
 
 if __name__ == "__main__":
     init_db()
+    init_classroom_db(app)
     app.run(debug=True)
